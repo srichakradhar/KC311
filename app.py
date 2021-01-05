@@ -90,6 +90,7 @@ app = Dash(__name__,
     external_scripts=[chroma],
     external_stylesheets=external_stylesheets,
     prevent_initial_callbacks=False)
+server = app.server
 
 app.layout = html.Div([
     header_section(),
@@ -149,4 +150,4 @@ def update(year_slider, csc, state):
 
 
 if __name__ == '__main__':
-    app.run_server(debug=True, threaded=True, use_reloader=True)
+    app.run_server()
