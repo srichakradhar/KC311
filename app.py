@@ -150,7 +150,7 @@ app.layout = html.Div([
     ], className="twelve columns"),
     html.Div([
         html.Div(children=[
-            dcc.Graph(animate=True, id='nbh_radar', className="four columns"),
+            dcc.Graph(id='nbh_radar', className="four columns"),
             dcc.Graph(animate=True, id='311-calls-deps', className="eight columns")
         ], className="eight columns named-card"),
         dcc.Graph(animate=True, id='311-calls-types', className="four columns")
@@ -168,8 +168,8 @@ def update_trends_graph(years_range, nbhid):
     return {
         'data': [dict({'x': x, 'y': y, 'type': 'bar', 'name': '311 Calls Trend'})],
         'layout': {
-            'xaxis': {'range': [min(x)-1, max(x)+1]},
-            'yaxis': {'range': [min(y)-100, max(y)+100]},
+            'xaxis': {'title': 'Year', 'range': [min(x)-1, max(x)+1]},
+            'yaxis': {'title': 'Call Volume', 'range': [min(y)-100, max(y)+100]},
             'title': 'Trend of 311 Calls (Normalized)'
         }
     }
@@ -225,6 +225,7 @@ def update_types_graph(years_range, nbhid):
     types_df = types_df.rename(columns=str).reset_index().set_index('TYPE')
     types_df['total'] = types_df.sum(axis=1)
     types_df = types_df.nlargest(10, 'total')
+    max_count = types_df['total'].max()
     types_df.drop('total', axis=1, inplace=True)
     types_df.columns = ['2007 - 2010', '2011 - 2015', '2016 - 2020']
     type_counts = types_df.groupby(level=0).apply(lambda df: df.xs(df.name).to_dict()).to_dict()
@@ -243,9 +244,8 @@ def update_types_graph(years_range, nbhid):
 
     fig.update_layout(barmode='stack',
     title=dict(text="Top Complaint Types - Composition", yanchor="bottom", y=0.2),
-    xaxis_title="Complaints",
-    yaxis_title="Period (bins)",
-    xaxis=dict(side='top'),
+    xaxis=dict(title="Complaints", side='top', range=[0, max_count]),
+    yaxis=dict(title="Period (bins)"),
     showlegend=True,
     legend=dict(
         yanchor="bottom",
@@ -271,9 +271,9 @@ def update_radar_hours(years_range, nbhid):
     df_nbh = df[df["nbhid"] == int(nbhid)]  # pick one state
     df_nbh = df_nbh[(df_nbh['CREATION YEAR'] <= years_range[1]) & (df_nbh['CREATION YEAR'] >= years_range[0])]
     df_nbh['hour'] = df_nbh['CREATION TIME'].map(lambda d: datetime.strptime(d, '%I:%M %p').hour)
-    
+    frequencies = df_nbh.groupby(['hour'])['CASE ID'].count().tolist()
     fig = go.Figure(data=go.Scatterpolar(
-    r=df_nbh.groupby(['hour'])['CASE ID'].count().tolist(),
+    r=frequencies,
     theta=list(map(str, range(24))),
     mode='lines',
     fill='toself',
