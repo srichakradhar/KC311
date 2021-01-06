@@ -125,6 +125,7 @@ app.layout = html.Div([
     ], className="twelve columns"),
 ],className="container twelve columns")
 
+## Census API Key: a21f6b13191767b6d37d3d901f604aff751be3e0
 # =====Callbacks=====
 @app.callback(
     Output('311-calls-trend', 'figure'),
@@ -133,7 +134,6 @@ def update_trends_graph(years_range, nbhid):
     x = list(range(years_range[0], years_range[1] + 1))
     df_nbh = df[df["nbhid"] == int(nbhid)]  # pick one state
     y = df_nbh[(df_nbh['CREATION YEAR'] <= years_range[1]) & (df_nbh['CREATION YEAR'] >= years_range[0])].groupby(['CREATION YEAR'])['CASE ID'].count().tolist()
-    print(len(y))
     return {
         'data': [dict({'x': x, 'y': y, 'type': 'bar', 'name': '311 Calls Trend'})],
         'layout': {

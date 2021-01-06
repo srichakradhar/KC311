@@ -3,11 +3,13 @@ import dash_core_components as dcc
 import dash_html_components as html
 import dash_leaflet as dl
 import dash_leaflet.express as dlx
+import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
 from dash_extensions.javascript import Namespace
 from dash import Dash
 from dash.dependencies import Input, Output
+from datetime import datetime
 
 # region Data
 APP_PATH = str(pathlib.Path(__file__).parent.resolve())
@@ -20,7 +22,34 @@ df = pd.concat([pd.read_csv(os.path.join(APP_PATH, os.path.join("data", nbh)), u
                 for nbh in os.listdir(os.path.join(APP_PATH, "data")) if nbh.endswith('.csv')])
 df.rename(columns={'nbh_id': 'nbhid'}, inplace=True)
 color_prop = 'DAYS TO CLOSE'
+geo_colors = [
+    "#8dd3c7",
+    "#ffd15f",
+    "#bebada",
+    "#fb8072",
+    "#80b1d3",
+    "#fdb462",
+    "#b3de69",
+    "#fccde5",
+    "#d9d9d9",
+    "#bc80bd",
+    "#ccebc5",
+]
 
+bar_coloway = [
+    "#fa4f56",
+    "#8dd3c7",
+    "#ffffb3",
+    "#bebada",
+    "#80b1d3",
+    "#fdb462",
+    "#b3de69",
+    "#fccde5",
+    "#d9d9d9",
+    "#bc80bd",
+    "#ccebc5",
+    "#ffed6f",
+]
 def header_section():
     return html.Div(
         [
@@ -102,22 +131,29 @@ app.layout = html.Div([
         ], style={'height': '75vh', 'margin': "auto", "display": "block", "position": "relative"},
         className="eight columns named-card"),
         html.Div(
-            children=[
-                html.P(
-                    'Filter by year:',
-                    className="control_label"
-                ),
-                dcc.RangeSlider(
-                    id='year_slider',
-                    min=2007,
-                    max=2020,
-                    value=[2015, 2020],
-                    className="dcc_control",
-                    step=None,
-                    marks={i: str(i) for i in range(2007, 2021)}
-                ),
-                dcc.Graph(animate=True, id='311-calls-trend')
+        children=[
+            html.P(
+                'Filter by year:',
+                className="control_label"
+            ),
+            dcc.RangeSlider(
+                id='year_slider',
+                min=2007,
+                max=2020,
+                value=[2015, 2020],
+                className="dcc_control",
+                step=None,
+                marks={i: str(i) for i in range(2007, 2021)}
+            ),
+            dcc.Graph(animate=True, id='311-calls-trend')
         ], className="four columns named-card"),
+    ], className="twelve columns"),
+    html.Div([
+        html.Div(children=[
+            dcc.Graph(animate=True, id='nbh_radar', className="four columns"),
+            dcc.Graph(animate=True, id='311-calls-deps', className="eight columns")
+        ], className="eight columns named-card"),
+        dcc.Graph(animate=True, id='311-calls-types', className="four columns")
     ], className="twelve columns"),
 ],className="container twelve columns")
 
@@ -129,7 +165,6 @@ def update_trends_graph(years_range, nbhid):
     x = list(range(years_range[0], years_range[1] + 1))
     df_nbh = df[df["nbhid"] == int(nbhid)]  # pick one state
     y = df_nbh[(df_nbh['CREATION YEAR'] <= years_range[1]) & (df_nbh['CREATION YEAR'] >= years_range[0])].groupby(['CREATION YEAR'])['CASE ID'].count().tolist()
-    print(len(y))
     return {
         'data': [dict({'x': x, 'y': y, 'type': 'bar', 'name': '311 Calls Trend'})],
         'layout': {
@@ -140,14 +175,129 @@ def update_trends_graph(years_range, nbhid):
     }
 
 
+@app.callback(
+    Output('311-calls-deps', 'figure'),
+    [Input('year_slider', 'value'), Input('dd_state', 'value')])
+def update_departments_graph(years_range, nbhid):
+    years = list(range(years_range[0], years_range[1] + 1))
+    df_nbh = df[df["nbhid"] == int(nbhid)]  # pick one state
+    df_nbh = df_nbh[(df_nbh['CREATION YEAR'] <= years_range[1]) & (df_nbh['CREATION YEAR'] >= years_range[0])]
+    df_nbh_deps = df_nbh.groupby(['DEPARTMENT', 'CREATION YEAR'])[['CASE ID']].count()
+    df_nbh_deps.rename(columns={'CASE ID': 'count'}, inplace=True)
+    dep_counts = df_nbh_deps.groupby(level=0).apply(lambda df: df.xs(df.name).to_dict()).to_dict()
+    fig = []
+    for ind, dep in enumerate(dep_counts):
+        fig.append(
+            go.Scatter(
+                x=years,
+                y=list(dep_counts[dep]['count'].values()),
+                name=dep,
+                mode="markers+lines",
+                hovertemplate="<b>" + dep + ": </b> %{y}",
+                marker=dict(
+                    size=12,
+                    opacity=0.8,
+                    color=geo_colors[ind % len(geo_colors)],
+                    line=dict(width=1, color="#ffffff"),
+                ),
+            )
+        )
+    
+    return {
+        'data': fig,
+        "layout": dict(
+            title='311 Calls by Department',
+            xaxis=dict(title="Year"),
+            yaxis=dict(title="Call Volume"),
+            hovermode="closest"
+        )
+    }
+
+@app.callback(
+    Output('311-calls-types', 'figure'),
+    [Input('year_slider', 'value'), Input('dd_state', 'value')])
+def update_types_graph(years_range, nbhid):
+    years = list(range(years_range[0], years_range[1] + 1))
+    df_nbh = df[df["nbhid"] == int(nbhid)]  # pick one state
+    df_nbh = df_nbh[(df_nbh['CREATION YEAR'] <= years_range[1]) & (df_nbh['CREATION YEAR'] >= years_range[0])]
+    bins = [2007, 2011, 2016, 2020]
+    types_df = df_nbh.groupby(['TYPE', pd.cut(df_nbh['CREATION YEAR'], bins)])[['CASE ID']].count().unstack().fillna(0).astype(int)
+    types_df = types_df.rename(columns=str).reset_index().set_index('TYPE')
+    types_df['total'] = types_df.sum(axis=1)
+    types_df = types_df.nlargest(10, 'total')
+    types_df.drop('total', axis=1, inplace=True)
+    types_df.columns = ['2007 - 2010', '2011 - 2015', '2016 - 2020']
+    type_counts = types_df.groupby(level=0).apply(lambda df: df.xs(df.name).to_dict()).to_dict()
+    fig = go.Figure()
+    for ind, req_type in enumerate(type_counts):
+        fig.add_trace(go.Bar(
+            x=list(type_counts[req_type].values()),
+            y=types_df.columns,
+            name=req_type,
+            orientation='h',
+            marker=dict(
+                color=bar_coloway[ind],
+                line=dict(color=bar_coloway[ind], width=3)
+            )
+        ))
+
+    fig.update_layout(barmode='stack',
+    title=dict(text="Top Complaint Types - Composition", yanchor="bottom", y=0.2),
+    xaxis_title="Complaints",
+    yaxis_title="Period (bins)",
+    xaxis=dict(side='top'),
+    showlegend=True,
+    legend=dict(
+        yanchor="bottom",
+        y=-0.99,
+        xanchor="right",
+        x=0.99
+    ),
+    margin=dict(l=0, t=10, b=0, r=0)
+    )
+    return fig
+
 @app.callback([Output("geojson", "hideout"), Output("geojson", "data"), Output("colorbar", "colorscale"),
                Output("colorbar", "min"), Output("colorbar", "max")],
               [Input('year_slider', 'value'), Input("dd_csc", "value"), Input("dd_state", "value")])
-def update(year_slider, csc, state):
+def update_map(year_slider, csc, state):
     csc, data, mm = json.loads(csc), get_data(int(state), year_slider), get_minmax(int(state))
     hideout = dict(colorscale=csc, colorProp=color_prop, **mm)
     return hideout, data, csc, mm["min"], mm["max"]
 
+@app.callback(Output("nbh_radar", "figure"),
+              [Input('year_slider', 'value'), Input("dd_state", "value")])
+def update_radar_hours(years_range, nbhid):
+    df_nbh = df[df["nbhid"] == int(nbhid)]  # pick one state
+    df_nbh = df_nbh[(df_nbh['CREATION YEAR'] <= years_range[1]) & (df_nbh['CREATION YEAR'] >= years_range[0])]
+    df_nbh['hour'] = df_nbh['CREATION TIME'].map(lambda d: datetime.strptime(d, '%I:%M %p').hour)
+    
+    fig = go.Figure(data=go.Scatterpolar(
+    r=df_nbh.groupby(['hour'])['CASE ID'].count().tolist(),
+    theta=list(map(str, range(24))),
+    mode='lines',
+    fill='toself',
+    name='Calls by Hour',
+    ))
+
+    fig.update_layout(
+    title = 'Calls round the clock',
+    polar=dict(
+        radialaxis_angle = 90,
+        radialaxis=dict(
+        visible=True
+        ),
+        angularaxis = dict(
+        rotation=90, # start position of angular axis
+        direction="clockwise"
+        )
+    ),
+    template="plotly_dark"
+    )
+
+    return fig
+
 
 if __name__ == '__main__':
+    # app.run_server(debug=True, threaded=True, use_reloader=True)
     app.run_server()
