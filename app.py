@@ -9,6 +9,8 @@ import numpy as np
 from dash_extensions.javascript import Namespace
 from dash import Dash
 from dash.dependencies import Input, Output
+from dash_extensions import Download
+from dash_extensions.snippets import send_data_frame
 from datetime import datetime
 
 # region Data
@@ -50,11 +52,16 @@ bar_coloway = [
     "#ccebc5",
     "#ffed6f",
 ]
+
+months = ["NA",
+          "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
 def header_section():
     return html.Div(
         [
-            html.Img(src=app.get_asset_url("ocelai-logo.jpg"), className="logo"),
-            html.H4("311 Community Engagement - OCEL.AI")
+            html.Img(src=app.get_asset_url("SCC-Logo.png"), className="logo"),
+            html.H4("SCC - 311 Community Engagement"),
+            html.Div([html.Hr()]),
         ],
         className="header__title",
     )
@@ -132,10 +139,6 @@ app.layout = html.Div([
         className="eight columns named-card"),
         html.Div(
         children=[
-            html.P(
-                'Filter by year:',
-                className="control_label"
-            ),
             dcc.RangeSlider(
                 id='year_slider',
                 min=2007,
@@ -145,7 +148,17 @@ app.layout = html.Div([
                 step=None,
                 marks={i: str(i) for i in range(2007, 2021)}
             ),
-            dcc.Graph(animate=True, id='311-calls-trend')
+            dcc.RangeSlider(
+                id='month_slider',
+                min=1,
+                max=12,
+                value=[1, 12],
+                className="dcc_control",
+                step=None,
+                marks={i: months[i] for i in range(1, 13)}
+            ),
+            dcc.Graph(animate=True, id='311-calls-trend'),
+            html.Div([html.Button("Download", id="download_btn"), Download(id="download")]),
         ], className="four columns named-card"),
     ], className="twelve columns"),
     html.Div([
@@ -160,11 +173,13 @@ app.layout = html.Div([
 # =====Callbacks=====
 @app.callback(
     Output('311-calls-trend', 'figure'),
-    [Input('year_slider', 'value'), Input('dd_state', 'value')])
-def update_trends_graph(years_range, nbhid):
+    [Input('year_slider', 'value'), Input('month_slider', 'value'), Input('dd_state', 'value')])
+def update_trends_graph(years_range, months_range, nbhid):
     x = list(range(years_range[0], years_range[1] + 1))
     df_nbh = df[df["nbhid"] == int(nbhid)]  # pick one state
-    y = df_nbh[(df_nbh['CREATION YEAR'] <= years_range[1]) & (df_nbh['CREATION YEAR'] >= years_range[0])].groupby(['CREATION YEAR'])['CASE ID'].count().tolist()
+    df_nbh = df_nbh[(df_nbh['CREATION YEAR'] <= years_range[1]) & (df_nbh['CREATION YEAR'] >= years_range[0])]
+    df_nbh = df_nbh[(df_nbh['CREATION MONTH'] <= months_range[1]) & (df_nbh['CREATION MONTH'] >= months_range[0])]
+    y = df_nbh.groupby(['CREATION YEAR'])['CASE ID'].count().tolist()
     return {
         'data': [dict({'x': x, 'y': y, 'type': 'bar', 'name': '311 Calls Trend'})],
         'layout': {
@@ -177,11 +192,12 @@ def update_trends_graph(years_range, nbhid):
 
 @app.callback(
     Output('311-calls-deps', 'figure'),
-    [Input('year_slider', 'value'), Input('dd_state', 'value')])
-def update_departments_graph(years_range, nbhid):
+    [Input('year_slider', 'value'), Input('month_slider', 'value'), Input('dd_state', 'value')])
+def update_departments_graph(years_range, months_range, nbhid):
     years = list(range(years_range[0], years_range[1] + 1))
     df_nbh = df[df["nbhid"] == int(nbhid)]  # pick one state
     df_nbh = df_nbh[(df_nbh['CREATION YEAR'] <= years_range[1]) & (df_nbh['CREATION YEAR'] >= years_range[0])]
+    df_nbh = df_nbh[(df_nbh['CREATION MONTH'] <= months_range[1]) & (df_nbh['CREATION MONTH'] >= months_range[0])]
     df_nbh_deps = df_nbh.groupby(['DEPARTMENT', 'CREATION YEAR'])[['CASE ID']].count()
     df_nbh_deps.rename(columns={'CASE ID': 'count'}, inplace=True)
     dep_counts = df_nbh_deps.groupby(level=0).apply(lambda df: df.xs(df.name).to_dict()).to_dict()
@@ -215,14 +231,15 @@ def update_departments_graph(years_range, nbhid):
 
 @app.callback(
     Output('311-calls-types', 'figure'),
-    [Input('year_slider', 'value'), Input('dd_state', 'value')])
-def update_types_graph(years_range, nbhid):
+    [Input('year_slider', 'value'), Input('month_slider', 'value'), Input('dd_state', 'value')])
+def update_types_graph(years_range, months_range, nbhid):
     years = list(range(years_range[0], years_range[1] + 1))
     df_nbh = df[df["nbhid"] == int(nbhid)]  # pick one state
     df_nbh = df_nbh[(df_nbh['CREATION YEAR'] <= years_range[1]) & (df_nbh['CREATION YEAR'] >= years_range[0])]
+    df_nbh = df_nbh[(df_nbh['CREATION MONTH'] <= months_range[1]) & (df_nbh['CREATION MONTH'] >= months_range[0])]
     bins = [2007, 2011, 2016, 2020]
-    types_df = df_nbh.groupby(['TYPE', pd.cut(df_nbh['CREATION YEAR'], bins)])[['CASE ID']].count().unstack().fillna(0).astype(int)
-    types_df = types_df.rename(columns=str).reset_index().set_index('TYPE')
+    types_df = df_nbh.groupby(['CATEGORY', pd.cut(df_nbh['CREATION YEAR'], bins)])[['CASE ID']].count().unstack().fillna(0).astype(int)
+    types_df = types_df.rename(columns=str).reset_index().set_index('CATEGORY')
     types_df['total'] = types_df.sum(axis=1)
     types_df = types_df.nlargest(10, 'total')
     max_count = types_df['total'].max()
@@ -232,8 +249,8 @@ def update_types_graph(years_range, nbhid):
     fig = go.Figure()
     for ind, req_type in enumerate(type_counts):
         fig.add_trace(go.Bar(
-            x=list(type_counts[req_type].values()),
-            y=types_df.columns,
+            x=types_df.columns,
+            y=list(type_counts[req_type].values()),
             name=req_type,
             orientation='h',
             marker=dict(
@@ -243,8 +260,8 @@ def update_types_graph(years_range, nbhid):
         ))
 
     fig.update_layout(barmode='stack',
-    title=dict(text="Top Complaint Types - Composition", yanchor="bottom", y=0.2),
-    xaxis=dict(title="Complaints", side='top', range=[0, max_count]),
+    title=dict(text="Top Request Types - Composition", yanchor="bottom", y=0.2),
+    xaxis=dict(title="Requests", side='top', range=[0, max_count]),
     yaxis=dict(title="Period (bins)"),
     showlegend=True,
     legend=dict(
@@ -297,7 +314,15 @@ def update_radar_hours(years_range, nbhid):
 
     return fig
 
+@app.callback(Output("download", "data"), [Input("download_btn", "n_clicks"), Input('year_slider', 'value'), Input("dd_state", "value")])
+def func(n_clicks, years_range, nbhid):
+    if n_clicks:
+        df_nbh = df[df["nbhid"] == int(nbhid)]  # pick one state
+        nbhname = df_nbh['nbh_name'].loc[0]
+        df_nbh = df_nbh[(df_nbh['CREATION YEAR'] <= years_range[1]) & (df_nbh['CREATION YEAR'] >= years_range[0])]
+        return send_data_frame(df_nbh.to_csv, "".join(["kc311", str(nbhid), '_', nbhname,
+        str(years_range[0]), '-', str(years_range[1]), ".csv"]), index=False)
 
 if __name__ == '__main__':
-    # app.run_server(debug=True, threaded=True, use_reloader=True)
-    app.run_server()
+    app.run_server(debug=True, threaded=True, use_reloader=True)
+    # app.run_server()
