@@ -9,5 +9,4 @@ dash-leaflet==0.1.12
 gunicorn>=19.9.0
 numpy==1.18.2
 pandas>=0.24.2
-geopandas==0.8.1
 pyLDAvis==2.1.2
