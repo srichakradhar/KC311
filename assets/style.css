@@ -53,3 +53,7 @@ p {
   max-height: 430px;
   overflow-y: scroll;
 }
+
+#tsne-lda{
+  height: 50vw
+}
